@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+env/
+venv/
+.venv/
+build/
+dist/
+eggs/
+*.egg-info/
+.Python
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Model and outputs
+yolov8n.pt
+runs/
+logs/
+
+# OneDrive temp
+~$*
