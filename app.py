@@ -8,14 +8,24 @@ CONF_THRESH = 0.45          # detection confidence threshold
 HOLD_SECONDS = 2        # phone must be detected continuously
 COOLDOWN_SECONDS = 0       # cooldown between popups
 CAMERA_INDEX = 0            # default webcam
-INFERENCE_EVERY_N_FRAMES = 15
+
+# Performance / resource tuning
+FRAME_WIDTH = 320          # capture width (keep small)
+FRAME_HEIGHT = 240         # capture height
+# Run inference less frequently to reduce CPU usage
+INFERENCE_EVERY_N_FRAMES = 60
+# Run the model on a smaller copy of the frame and scale boxes back
+INFERENCE_WIDTH = 160
+INFERENCE_HEIGHT = 120
+# Disable display (set True to hide the OpenCV window and reduce GPU/CPU used by GUI)
+SKIP_DISPLAY = False
 
 def main():
     model = YOLO("yolov8n.pt")
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
     if not cap.isOpened():
         raise RuntimeError("Could not open webcam.")
@@ -33,9 +43,10 @@ def main():
 
         frame_count += 1
 
-        # Run YOLO only every N frames
+        # Run YOLO only every N frames on a downscaled copy
         if frame_count % INFERENCE_EVERY_N_FRAMES == 0:
-            last_results = model(frame, verbose=False)[0]
+            small = cv2.resize(frame, (INFERENCE_WIDTH, INFERENCE_HEIGHT))
+            last_results = model(small, verbose=False)[0]
 
         phone_detected = False
 
@@ -49,8 +60,16 @@ def main():
                 if cls_id == 67 and conf >= CONF_THRESH:
                     phone_detected = True
 
-                    # Draw bounding box (debug)
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    # Draw bounding box (debug). Results were produced on the
+                    # downscaled frame so we scale coordinates back to the
+                    # original frame size for display.
+                    x1_s, y1_s, x2_s, y2_s = map(float, box.xyxy[0])
+                    scale_x = frame.shape[1] / INFERENCE_WIDTH
+                    scale_y = frame.shape[0] / INFERENCE_HEIGHT
+                    x1 = int(x1_s * scale_x)
+                    y1 = int(y1_s * scale_y)
+                    x2 = int(x2_s * scale_x)
+                    y2 = int(y2_s * scale_y)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     cv2.putText(
                         frame,
@@ -80,17 +99,17 @@ def main():
         else:
             phone_present_since = None
 
-        cv2.putText(
-            frame,
-            "Press Q to quit",
-            (10, 20),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            1,
-        )
-
-        cv2.imshow("Phone Guard", frame)
+        if not SKIP_DISPLAY:
+            cv2.putText(
+                frame,
+                "Press Q to quit",
+                (10, 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                1,
+            )
+            cv2.imshow("Phone Guard", frame)
 
         if cv2.waitKey(1) & 0xFF in (ord("q"), ord("Q")):
             break
